@@ -1,0 +1,299 @@
+name: Checkpoint 3 — Auto and Teacher Grade
+
+on:
+  push:
+    branches: ['cp3-*']
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, closed]
+    branches: [main]
+  issue_comment:
+    types: [created, edited]
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled, assigned, unassigned]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  grade:
+    if: ${{ github.event_name != 'issues' || startsWith(github.event.issue.title, '[CP3]') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Grade checkpoint
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const marker = '<!-- klis-cp3-progress -->';
+            const allowedGraders = new Set(['hbycwyh2008']);
+
+            function parseManualGrade(body) {
+              if (!body) return null;
+
+              const legacy = body.match(/(?:^|\n)\s*\/manual-grade\s+(40|[0-3]?\d)(?:\s|$)/i);
+              if (legacy) return { score: Number(legacy[1]), breakdown: null, format: 'short' };
+
+              if (!/(?:^|\n)\s*\/manual-grade\s*(?:\n|$)/i.test(body)) return null;
+
+              const readScore = (label, max) => {
+                const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const re = new RegExp(`^\\s*${escaped}:\\s*([0-9]|1[0-5])\\s*\\/\\s*${max}\\s*$`, 'mi');
+                const m = body.match(re);
+                if (!m) return null;
+                const n = Number(m[1]);
+                return n <= max ? n : null;
+              };
+
+              const breakdown = {
+                issue: readScore('Issue quality', 10),
+                project: readScore('Project evidence', 10),
+                concepts: readScore('Concepts', 15),
+                reflection: readScore('Reflection', 5)
+              };
+
+              if (Object.values(breakdown).some(v => v === null)) return null;
+              return {
+                score: breakdown.issue + breakdown.project + breakdown.concepts + breakdown.reflection,
+                breakdown,
+                format: 'template'
+              };
+            }
+
+            let eventPR = null;
+            if (context.eventName === 'pull_request_target') {
+              eventPR = context.payload.pull_request;
+            } else if (context.eventName === 'issue_comment' && context.payload.issue?.pull_request) {
+              eventPR = (await github.rest.pulls.get({
+                owner, repo, pull_number: context.payload.issue.number
+              })).data;
+            }
+
+            let username = null;
+            if (eventPR?.user?.login) {
+              username = eventPR.user.login;
+            } else if (
+              context.eventName === 'issues' &&
+              context.payload.issue &&
+              /^\[CP3\]/i.test(context.payload.issue.title || '')
+            ) {
+              username = context.payload.issue.user.login;
+            } else if (context.eventName === 'push') {
+              const pushedBranch = (context.ref || '').replace('refs/heads/', '');
+              username = pushedBranch.startsWith('cp3-') ? pushedBranch.slice(4) : owner;
+            } else if (context.eventName === 'issue_comment' && !context.payload.issue?.pull_request) {
+              const identityIssues = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo, state: 'all', per_page: 100
+              });
+              const studentIssue = identityIssues.find(i =>
+                !i.pull_request &&
+                /^\[CP3\]/i.test(i.title || '') &&
+                i.user?.type === 'User'
+              );
+              username = studentIssue?.user?.login || owner;
+            } else {
+              username = owner;
+            }
+            const branch = `cp3-${username}`;
+
+            let branchExists = false;
+            try {
+              await github.rest.repos.getBranch({ owner, repo, branch });
+              branchExists = true;
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+
+            const readAt = async (path, ref) => {
+              if (!ref) return '';
+              try {
+                const r = await github.rest.repos.getContent({ owner, repo, path, ref });
+                if (Array.isArray(r.data) || !r.data.content) return '';
+                return Buffer.from(r.data.content, r.data.encoding).toString('utf8');
+              } catch (e) {
+                if (e.status === 404) return '';
+                throw e;
+              }
+            };
+
+
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'all', per_page: 100
+            });
+
+            const cpIssue = allIssues.find(i =>
+              !i.pull_request &&
+              /^\[CP3\]/i.test(i.title) &&
+              i.user?.login?.toLowerCase() === username.toLowerCase()
+            );
+
+            const issueBody = cpIssue?.body || '';
+            const checklist =
+              (issueBody.match(/- \[ \]/g) || []).length +
+              (issueBody.match(/- \[[xX]\]/g) || []).length;
+            const structured = Boolean(cpIssue) && /\bgoal\b/i.test(issueBody) && checklist >= 2;
+            const assigned = Boolean(cpIssue?.assignees?.some(a => a.login.toLowerCase() === username.toLowerCase()));
+            const labeled = Boolean(cpIssue?.labels?.length);
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'all', per_page: 100
+            });
+            const matchingPulls = pulls
+              .filter(p =>
+                p.head.ref === branch &&
+                p.base.ref === 'main' &&
+                p.user.login.toLowerCase() === username.toLowerCase()
+              )
+              .sort((a, b) => b.number - a.number);
+
+            const prSummary = matchingPulls[0] || null;
+            const pr = prSummary
+              ? (await github.rest.pulls.get({ owner, repo, pull_number: prSummary.number })).data
+              : null;
+
+            const preferredRef = pr?.head?.sha || (branchExists ? branch : null);
+            const submission = await readAt('submission.md', preferredRef);
+            const field = label => submission.match(new RegExp(`^${label}:\\s*(\\S.*)$`, 'mi'))?.[1]?.trim() || '';
+            const answer = heading => submission.match(new RegExp(`## ${heading}[\\s\\S]*?\\nAnswer:\\s*([\\s\\S]*?)(?=\\n## |$)`, 'i'))?.[1]?.trim() || '';
+
+            const projectUrl = field('Project URL');
+            const projectUrlValid = /^https:\/\/github\.com\/(?:users|orgs)\/[^/]+\/projects\/\d+/i.test(projectUrl);
+            const statusesText = field('Project Statuses Used').toLowerCase();
+            const requiredStatusesRecorded = ['todo', 'in progress', 'review', 'done'].every(status => statusesText.includes(status));
+            const statedBranch = field('Required Branch').replace(/`/g, '').trim();
+            const submissionComplete =
+              ['Name', 'GitHub Username', 'Required Branch', 'Project URL', 'Project Statuses Used'].every(field) &&
+              ['Question 1', 'Question 2', 'Question 3', 'Reflection'].every(answer) &&
+              statedBranch === branch &&
+              projectUrlValid &&
+              requiredStatusesRecorded;
+
+            const prComments = pr
+              ? await github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number: pr.number, per_page: 100
+                })
+              : [];
+
+            const checkPattern = /\b(check(?:ed|ing)?|review(?:ed|ing)?|verified|tested|lgtm|looks good|ready to merge)\b/i;
+            const checkMessages = prComments
+              .filter(c =>
+                c.user?.type === 'User' &&
+                c.user?.login?.toLowerCase() === username.toLowerCase() &&
+                c.created_at &&
+                checkPattern.test(c.body || '')
+              )
+              .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+            const checkBeforeMerge = checkMessages.find(c =>
+              !pr?.merged_at || new Date(c.created_at) <= new Date(pr.merged_at)
+            ) || null;
+
+            const correctBranch = Boolean(pr?.head?.ref === branch) || branchExists;
+            const assignedAndLabeled = assigned && labeled;
+            const mergedAfterCheck = Boolean(pr?.merged_at && checkBeforeMerge);
+            const issueClosedAfterMerge = Boolean(
+              cpIssue?.state === 'closed' &&
+              cpIssue.closed_at &&
+              pr?.merged_at &&
+              new Date(cpIssue.closed_at) >= new Date(pr.merged_at)
+            );
+
+            const checks = [
+              ['Correct checkpoint branch', correctBranch ? 5 : 0, 5, correctBranch ? (pr ? `${branch} via PR #${pr.number}` : branch) : `expected ${branch}`],
+              ['Student-created [CP3] Issue exists', cpIssue ? 10 : 0, 10, cpIssue ? `Issue #${cpIssue.number}` : 'create the required Issue'],
+              ['Issue has Goal and acceptance checklist', structured ? 10 : 0, 10, structured ? `${checklist} checklist items` : 'add Goal + at least two checkboxes'],
+              ['Issue assigned and labeled', assignedAndLabeled ? 5 : 0, 5, assignedAndLabeled ? `assigned to @${username} with label` : 'assign it to yourself and add a label'],
+              ['Pull Request targets main', pr ? 5 : 0, 5, pr ? `PR #${pr.number}` : 'open required PR'],
+              ['Student self-check message before merge', checkBeforeMerge ? 10 : 0, 10, checkBeforeMerge ? `self-check by @${checkBeforeMerge.user.login} at ${checkBeforeMerge.created_at}` : 'inspect the PR and leave a clear self-check message before merge'],
+              ['Pull Request merged after check', mergedAfterCheck ? 5 : 0, 5, mergedAfterCheck ? `merged at ${pr.merged_at}` : 'merge only after the student self-check message'],
+              ['Issue closed after merge', issueClosedAfterMerge ? 5 : 0, 5, issueClosedAfterMerge ? `closed at ${cpIssue.closed_at}` : 'close the CP3 Issue after the self-checked PR is merged'],
+              ['Submission + Project fields complete', submissionComplete ? 5 : 0, 5, submissionComplete ? 'Project URL and all four statuses recorded' : 'complete submission.md with valid Project URL and Todo / In Progress / Review / Done']
+            ];
+
+            const automatic = checks.reduce((s, c) => s + c[1], 0);
+            const rows = checks.map(([label, earned, max, detail]) =>
+              `| ${earned === max ? '✅' : earned ? '🟨' : '⬜'} ${label} | ${earned}/${max} | ${detail} |`
+            ).join('\n');
+
+            const status = automatic < 60
+              ? '🟡 **IN PROGRESS — complete the missing automatic evidence.**'
+              : '🔵 **AUTOMATIC CHECKS PASSED — checked, merged, and ready for teacher review.**';
+
+            const defaultTeacherBlock = [
+              '<!-- klis-cp3-teacher-sync-start -->',
+              '### 🧑‍🏫 Teacher review — 40 points',
+              '',
+              '**Teacher score:** awaiting review  ',
+              '**Final score:** pending teacher review',
+              '',
+              '#### Teacher grading template',
+              '',
+              'Use this in the mother-repository CP3 submission Issue:',
+              '',
+              '```text',
+              '/manual-grade',
+              'Issue quality: 0/10',
+              'Project evidence: 0/10',
+              'Concepts: 0/15',
+              'Reflection: 0/5',
+              '',
+              'Feedback:',
+              'Write concise feedback here.',
+              '```',
+              '',
+              '<!-- klis-cp3-teacher-sync-end -->'
+            ].join('\n');
+
+            const progressBody = `${marker}
+            ## CP3 — Progress & Score
+
+            **Student:** @${username}  
+            **Repository:** https://github.com/${owner}/${repo}  
+            **Automatic:** ${automatic}/60
+
+            | Check | Score | Evidence |
+            |---|---:|---|
+            ${rows}
+
+            ${status}
+
+            > GitHub Project evidence is teacher-reviewed. The teacher verifies the four Kanban statuses, that the Issue and PR are in the same Project, and that both finish in Done.
+
+            **If a row is incomplete, fix it in the required branch/work item and push again. This same table updates automatically.**
+
+            ## Submit for teacher review
+
+            [Submit CP3 to the mother repository](https://github.com/KLIS-CS/GitHub-Issues-Projects-Workflow/issues/new?template=cp3-submission.yml)
+
+            ${defaultTeacherBlock}`;
+
+            let exercise = allIssues.find(i => !i.pull_request && i.body?.includes('<!-- klis-cp3-exercise -->'));
+            if (!exercise) {
+              exercise = (await github.rest.issues.create({
+                owner, repo,
+                title: 'Exercise: Checkpoint 3 — Issues & Project Management',
+                body: '<!-- klis-cp3-exercise -->\n## Checkpoint 3 — Issues & Project Management'
+              })).data;
+            }
+
+            const exerciseComments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: exercise.number, per_page: 100
+            });
+            const old = exerciseComments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+            let finalBody = progressBody;
+            const teacherMatch = old?.body?.match(/<!-- klis-cp3-teacher-sync-start -->[\s\S]*?<!-- klis-cp3-teacher-sync-end -->/);
+            if (teacherMatch) finalBody = finalBody.replace(defaultTeacherBlock, teacherMatch[0]);
+
+            if (old) await github.rest.issues.updateComment({ owner, repo, comment_id: old.id, body: finalBody });
+            else await github.rest.issues.createComment({ owner, repo, issue_number: exercise.number, body: finalBody });
+
+            await core.summary
+              .addHeading(`Checkpoint 3: ${automatic}/60 automatic`)
+              .addRaw(`Automatic: ${automatic}/60\n`)
+              .write();
+
+            if (automatic !== 60 && ['push', 'pull_request_target'].includes(context.eventName)) {
+              core.setFailed(`Automatic score is ${automatic}/60.`);
+            }

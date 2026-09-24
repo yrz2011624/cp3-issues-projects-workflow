@@ -1,0 +1,81 @@
+name: CP3 Assessment Self-Test
+
+on:
+  push:
+    branches: [main]
+    paths: ['README.md','submission.md','TEACHER-GRADING.md','.github/**']
+  pull_request:
+    branches: [main]
+    paths: ['README.md','submission.md','TEACHER-GRADING.md','.github/**']
+
+permissions:
+  contents: read
+
+jobs:
+  structural-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate CP3 template
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in README.md submission.md TEACHER-GRADING.md .github/pull_request_template.md .github/ISSUE_TEMPLATE/cp3-submission.yml .github/workflows/0-start-exercise.yml .github/workflows/grade.yml .github/workflows/grade-external-submission.yml .github/workflows/student-score.yml .github/workflows/guardrails.yml; do
+            test -f "$f" || { echo "Missing $f"; exit 1; }
+          done
+
+          grep -q 'cp3-YOUR-GITHUB-USERNAME' README.md
+          grep -q 'visibility=public' README.md
+          grep -q 'Todo → In Progress → Review → Done' README.md
+          ! grep -q 'APPROVED' README.md
+          grep -q 'Submit CP3' README.md
+          grep -q 'original \*\*Exercise Issue\*\*' README.md
+
+          ! grep -q 'Issue Number:' submission.md
+          grep -q 'Project URL:' submission.md
+          grep -q 'Todo → In Progress → Review → Done' submission.md
+
+          grep -q 'issue_comment:' .github/workflows/grade.yml
+          grep -q 'issues:' .github/workflows/grade.yml
+          grep -q 'listComments' .github/workflows/grade.yml
+          grep -q 'checkPattern' .github/workflows/grade.yml
+          grep -q "c.user?.login?.toLowerCase() === username.toLowerCase()" .github/workflows/grade.yml
+          grep -q 'merged_at' .github/workflows/grade.yml
+          grep -q 'pr?.head?.sha' .github/workflows/grade.yml
+          grep -q 'issueClosedAfterMerge' .github/workflows/grade.yml
+          ! grep -q "p.state === 'open'" .github/workflows/grade.yml
+
+          grep -q 'Todo, In Progress, Review, Done' TEACHER-GRADING.md
+          ! grep -q 'APPROVED' TEACHER-GRADING.md
+          grep -q 'self-check message' .github/ISSUE_TEMPLATE/cp3-submission.yml
+          grep -q 'same Project and finish in Done' .github/ISSUE_TEMPLATE/cp3-submission.yml
+
+          grep -q 'klis-cp3-mother-score' .github/workflows/grade-external-submission.yml
+          grep -q 'Issue quality: 0/10' .github/workflows/grade-external-submission.yml
+          grep -q 'Project evidence: 0/10' .github/workflows/grade-external-submission.yml
+          grep -q 'Concepts: 0/15' .github/workflows/grade-external-submission.yml
+          grep -q 'Reflection: 0/5' .github/workflows/grade-external-submission.yml
+          grep -q '.cp3-grades/' .github/workflows/grade-external-submission.yml
+
+          grep -q 'klis-cp3-exercise' .github/workflows/student-score.yml
+          grep -q 'klis-cp3-progress' .github/workflows/student-score.yml
+          grep -q 'updateComment' .github/workflows/student-score.yml
+          ! grep -q "title: 'CP3 — Score'" .github/workflows/student-score.yml
+          ! grep -q "title: 'Checkpoint 3 — Progress'" .github/workflows/grade.yml
+          grep -q 'raw.githubusercontent.com/KLIS-CS/GitHub-Issues-Projects-Workflow/grades' .github/workflows/student-score.yml
+
+          grep -q 'branches: \[main\]' .github/workflows/0-start-exercise.yml
+          grep -q 'Todo → In Progress → Review → Done' .github/workflows/0-start-exercise.yml
+          grep -q 'klis-cp3-progress' .github/workflows/0-start-exercise.yml
+          grep -q '/manual-grade' .github/workflows/0-start-exercise.yml
+          grep -q '/manual-grade' .github/workflows/student-score.yml
+          ! grep -q 'APPROVED' .github/workflows/0-start-exercise.yml
+          grep -q "github.repository != 'KLIS-CS/GitHub-Issues-Projects-Workflow'" .github/workflows/0-start-exercise.yml
+
+          echo 'CP3 template structure is valid.'
+
+      - name: Validate workflow YAML syntax
+        shell: bash
+        run: |
+          ruby -e "require 'yaml'; Dir['.github/workflows/*.yml'].each { |f| YAML.load_file(f); puts \"OK #{f}\" }"

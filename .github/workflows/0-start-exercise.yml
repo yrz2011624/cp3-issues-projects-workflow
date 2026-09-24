@@ -1,0 +1,119 @@
+name: Start Exercise
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  start:
+    if: ${{ github.repository != 'KLIS-CS/GitHub-Issues-Projects-Workflow' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create checkpoint issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const marker = '<!-- klis-cp3-exercise -->';
+            const username = context.actor;
+            const branch = `cp3-${username}`;
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'all', per_page: 100
+            });
+            const existing = issues.find(i => !i.pull_request && i.body?.includes(marker));
+
+            const body = `${marker}
+            ## Checkpoint 3 — Issues & Project Management
+
+            Welcome @${username}.
+
+            **Required branch:** \`${branch}\`
+
+            ### Your task
+
+            1. Create one GitHub Project using a **Board** view with exactly these statuses: \`Todo → In Progress → Review → Done\`.
+            2. Create a student work Issue whose title begins with \`[CP3]\`; give it a Goal, at least two acceptance-criteria checkboxes, a label, and assign it to yourself.
+            3. Add the Issue to the Project. Move it from \`Todo\` to \`In Progress\` when you begin.
+            4. Complete \`submission.md\` on \`${branch}\`, commit, and push the branch.
+            5. Open a Pull Request from \`${branch}\` → \`main\`, add the PR to the **same Project**, and move both the Issue and PR to \`Review\`.
+            6. Inspect your own PR and leave a clear self-check message in the PR Conversation before merge.
+            7. Merge only after that check message, move both Project items to \`Done\`, and close the Issue after the merge.
+
+            GitHub detects the student work Issue and Pull Request automatically. You do **not** need to enter an Issue number or PR number manually.
+
+            The grader checks your self-check message timestamp against the merge timestamp. A message added after merge does not count.
+
+            ### Automatic grading
+
+            The grader updates the score table **below in this same Exercise Issue** whenever you push or update the Pull Request.
+            `;
+
+            let exercise = existing;
+            if (!exercise) {
+              exercise = (await github.rest.issues.create({
+                owner, repo,
+                title: 'Exercise: Checkpoint 3 — Issues & Project Management',
+                body
+              })).data;
+            }
+
+            const progressMarker = '<!-- klis-cp3-progress -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: exercise.number, per_page: 100
+            });
+            const progressExists = comments.some(c => c.body?.includes(progressMarker));
+            if (!progressExists) {
+              const progressBody = [
+                progressMarker,
+                '## CP3 — Progress & Score',
+                '',
+                `**Student:** @${username}  `,
+                `**Repository:** https://github.com/${owner}/${repo}  `,
+                '**Automatic:** 0/60',
+                '',
+                '| Check | Score | Evidence |',
+                '|---|---:|---|',
+                `| ⬜ Correct checkpoint branch | 0/5 | Create ${branch}. |`,
+                '| ⬜ Student-created [CP3] Issue exists | 0/10 | Create the required Issue. |',
+                '| ⬜ Issue has Goal and acceptance checklist | 0/10 | Add Goal + at least two checkboxes. |',
+                '| ⬜ Issue assigned and labeled | 0/5 | Assign it to yourself and add a label. |',
+                '| ⬜ Pull Request targets main | 0/5 | Open the required PR. |',
+                '| ⬜ Student self-check message before merge | 0/10 | Inspect the PR and leave a clear self-check message. |',
+                '| ⬜ Pull Request merged after check | 0/5 | Waiting for merge. |',
+                '| ⬜ Issue closed after merge | 0/5 | Waiting for completion. |',
+                '| ⬜ Submission + Project fields complete | 0/5 | Complete submission.md. |',
+                '',
+                '🟡 **IN PROGRESS — complete the missing automatic evidence.**',
+                '',
+                '<!-- klis-cp3-teacher-sync-start -->',
+                '### 🧑‍🏫 Teacher review — 40 points',
+                '',
+                '**Teacher score:** awaiting review  ',
+                '**Final score:** pending teacher review',
+                '',
+                '#### Teacher grading template',
+                '',
+                'Use this in the mother-repository CP3 submission Issue:',
+                '',
+                '```text',
+                '/manual-grade',
+                'Issue quality: 0/10',
+                'Project evidence: 0/10',
+                'Concepts: 0/15',
+                'Reflection: 0/5',
+                '',
+                'Feedback:',
+                'Write concise feedback here.',
+                '```',
+                '<!-- klis-cp3-teacher-sync-end -->'
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: exercise.number, body: progressBody
+              });
+            }

@@ -2,13 +2,13 @@
 
 Complete every field and response **before** final submission.
 
-Name:
+Name:Tom
 
-GitHub Username:
+GitHub Username:yrz2011624
 
-Required Branch:
+Required Branch: CP3-yrz
 
-Project URL:
+Project URL:https://github.com/users/yrz2011624/projects/4/views/1
 
 Project Statuses Used: Todo → In Progress → Review → Done
 
@@ -16,22 +16,22 @@ Project Statuses Used: Todo → In Progress → Review → Done
 
 Why is an Issue useful before implementation begins?
 
-Answer:
+Answer: talk about quetion
 
 ## Question 2
 
 What is the purpose of acceptance criteria in an Issue?
 
-Answer:
+Answer:Define when a user story is complete
 
 ## Question 3
 
 Why should both the Issue and the Pull Request be tracked in the same GitHub Project?
 
-Answer:
+Answer:It can significantly improve team collaboration and project maintainability
 
 ## Reflection
 
 What should you self-check in the Pull Request before merging and moving the work from Review to Done, and why?
 
-Answer:
+Answer:Type Checking: Run type checks (if applicable) to catch any type-related errors.

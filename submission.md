@@ -16,22 +16,22 @@ Project Statuses Used: Todo → In Progress → Review → Done
 
 Why is an Issue useful before implementation begins?
 
-Answer:
+Answer:Issues are a powerful tool for managing tasks, bugs, and feature requests in a software project.
 
 ## Question 2
 
 What is the purpose of acceptance criteria in an Issue?
 
-Answer:
+Answer:to be considered complete and acceptable by the product owner or stakeholders.
 
 ## Question 3
 
 Why should both the Issue and the Pull Request be tracked in the same GitHub Project?
 
-Answer:
+Answer:Tracking both Issues and Pull Requests in the same GitHub Project improves traceability, reduces context switching, and keeps problem definitions and code changes linked in one workflow, making progress easier to understand and manage.
 
 ## Reflection
 
 What should you self-check in the Pull Request before merging and moving the work from Review to Done, and why?
 
-Answer:
+Answer:Does it conflict with the main branch?

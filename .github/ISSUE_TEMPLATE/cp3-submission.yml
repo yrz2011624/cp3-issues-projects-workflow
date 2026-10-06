@@ -1,0 +1,34 @@
+name: "Submit CP3"
+description: "Submit your completed public CP3 practice repository for automatic and teacher grading."
+title: "[CP3] Issues & Projects Submission"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submit only after you have inspected your own CP3 Pull Request and left a clear self-check message in its Conversation, the Pull Request has been merged into main, and both the Issue and Pull Request are in Done on your Project board.
+
+        The completed public CP3 repository is detected automatically from the GitHub account that opens this submission. Keep the copied repository Public so the mother grader can read the trusted CP3 automatic grader output.
+
+  - type: markdown
+    attributes:
+      value: |
+        **Repository URL and GitHub username are detected automatically from the account that opens this submission.**
+        The detected repository URL will be written into this Issue automatically.
+
+  - type: checkboxes
+    id: integrity
+    attributes:
+      label: Completion Check
+      options:
+        - label: I used the official KLIS-CS CP3 Copy Exercise.
+          required: true
+        - label: My Project has Todo, In Progress, Review, and Done.
+          required: true
+        - label: My CP3 Issue and Pull Request are both tracked in the same Project and finish in Done.
+          required: true
+        - label: I inspected my Pull Request and left a clear self-check message in the Conversation before I merged it.
+          required: true
+        - label: My CP3 Issue is closed after the merge.
+          required: true
+        - label: I did not include passwords, API keys, tokens, or other secrets.
+          required: true

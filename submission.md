@@ -2,13 +2,13 @@
 
 Complete every field and response **before** final submission.
 
-Name:
+Name:Tom
 
-GitHub Username:
+GitHub Username: yrz2011624
 
-Required Branch:
+Required Branch:cp3-yrz2011624
 
-Project URL:
+Project URL: https://github.com/yrz2011624/cp3-issues-projects-workflow.git
 
 Project Statuses Used: Todo → In Progress → Review → Done
 
